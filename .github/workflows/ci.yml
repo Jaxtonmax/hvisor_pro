@@ -139,5 +139,30 @@ jobs:
           echo "ARCH=${{ matrix.arch }}" >> $GITHUB_ENV
           echo "BOARD=${{ matrix.board }}" >> $GITHUB_ENV
 
+      - name: Install Correct RISC-V GCC Nightly Toolchain
+        if: matrix.arch == 'riscv64'
+        run: |
+          TOOLCHAIN_URL="https://github.com/riscv-collab/riscv-gnu-toolchain/releases/download/2025.06.07/riscv64-glibc-ubuntu-22.04-gcc-nightly-2025.06.07-nightly.tar.xz"
+          TOOLCHAIN_FILENAME="riscv64-glibc-ubuntu-22.04-gcc-nightly-2025.06.07-nightly.tar.xz"
+          echo "Downloading RISC-V GCC Nightly from ${TOOLCHAIN_URL}..."
+          wget "${TOOLCHAIN_URL}"
+          mkdir riscv-toolchain
+          tar -xf "${TOOLCHAIN_FILENAME}" -C riscv-toolchain --strip-components=1
+          echo "Adding RISC-V GCC Nightly to PATH..."
+          echo "$(pwd)/riscv-toolchain/bin" >> $GITHUB_PATH
+
+      - name: Create Symlinks for AArch64 Cross-Compiler
+        if: matrix.arch == 'aarch64'
+        shell: bash
+        run: |
+          echo "Creating symlinks for AArch64 toolchain..."
+          for tool in $(find /usr/bin -name "aarch64-linux-gnu-*"); do
+            tool_name=$(basename $tool)
+            link_name=${tool_name/aarch64-linux-gnu-/aarch64-none-linux-gnu-}
+            sudo ln -s $tool /usr/local/bin/$link_name
+          done
+          echo "Verifying AArch64 symlink:"
+          which aarch64-none-linux-gnu-gcc
+
       - name: Run System Test
         run: make stest

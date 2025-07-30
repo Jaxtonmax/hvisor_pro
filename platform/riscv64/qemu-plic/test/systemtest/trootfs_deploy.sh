@@ -36,21 +36,32 @@ build_hvisor_tool() {
     echo "=== Building hvisor components ==="
     cd "${HVISOR_TOOL_DIR}"
 
+    local CFLAGS_EXTRA=""
+
     case "${ARCH}" in
         riscv64)
-            export CC="riscv64-linux-gnu-gcc --sysroot=/usr/riscv64-linux-gnu -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0"
+            # 设置编译器
+            export CC="riscv64-linux-gnu-gcc --sysroot=/usr/riscv64-linux-gnu"
+            # 准备需要强制注入的 CFLAGS
+            # --sysroot: 指定系统根，用于链接库
+            # -I/usr/riscv64-linux-gnu/include: 指定 C 标准库头文件路径
+            # -I/usr/lib/gcc-cross/riscv64-linux-gnu/11/include-fixed: 指定 GCC 修正头文件路径，解决 limits.h 问题
+            # -U_FORTIFY_SOURCE ...: 解决 glibc 版本安全检查问题
+            CFLAGS_EXTRA="--sysroot=/usr/riscv64-linux-gnu -I/usr/riscv64-linux-gnu/include -I/usr/lib/gcc-cross/riscv64-linux-gnu/11/include-fixed -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0"
             ;;
         aarch64)
-            export CC="aarch64-linux-gnu-gcc --sysroot=/usr/aarch64-linux-gnu -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0"
+            export CC="aarch64-linux-gnu-gcc --sysroot=/usr/aarch64-linux-gnu"
+            CFLAGS_EXTRA="--sysroot=/usr/aarch64-linux-gnu -I/usr/aarch64-linux-gnu/include -I/usr/lib/gcc-cross/aarch64-linux-gnu/11/include-fixed -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0"
             ;;
     esac
 
-    # Cross-compilation parameters
+    # 在 make 命令中，将我们构造的 CFLAGS_EXTRA 添加进去
+    # 我们使用 CFLAGS+="${CFLAGS_EXTRA}" 的语法，确保所有标志都被正确传递
     make -e all \
         ARCH=riscv \
         LOG=LOG_INFO \
         KDIR="${LINUX_KERNEL_DIR}" \
-        CFLAGS+="-U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0" \
+        "CFLAGS+=${CFLAGS_EXTRA}" \
         MAKE='make -e'
 }
 

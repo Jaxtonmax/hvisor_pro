@@ -2,7 +2,6 @@
 set -e
 set -x            # Print commands for debugging
 
-# ... (Environment Configuration and other functions remain the same) ...
 # ========================
 # Environment Configuration
 # ========================
@@ -42,29 +41,28 @@ build_hvisor_tool() {
     cd "${HVISOR_TOOL_DIR}"
 
     local CFLAGS_EXTRA=""
-    local MAKE_ARCH="" # <--- 新增一个变量，用于传递给 make
+    local MAKE_ARCH=""
 
     case "${ARCH}" in
         riscv64)
             export CC="riscv64-linux-gnu-gcc --sysroot=/usr/riscv64-linux-gnu"
             CFLAGS_EXTRA="--sysroot=/usr/riscv64-linux-gnu -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0"
-            # 【关键修正】将 CI 的标准架构名 'riscv64' 翻译为 Makefile 期望的 'riscv'
             MAKE_ARCH="riscv"
             ;;
         aarch64)
             export CC="aarch64-linux-gnu-gcc --sysroot=/usr/aarch64-linux-gnu"
             CFLAGS_EXTRA="--sysroot=/usr/aarch64-linux-gnu -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0"
-            # 【关键修正】将 CI 的标准架构名 'aarch64' 翻译为 Makefile 期望的 'arm64'
             MAKE_ARCH="arm64"
             ;;
     esac
 
-    # 【关键修正】在 make 命令中使用我们翻译好的 MAKE_ARCH 变量
+    # 【关键修正】使用 CFLAGS=... 来彻底覆盖 Makefile 内部定义的 CFLAGS，
+    # 而不是使用 CFLAGS+=... 进行追加。这是解决 limits.h 错误的根本方法。
     make -e all \
         ARCH=${MAKE_ARCH} \
         LOG=LOG_INFO \
         KDIR="${LINUX_KERNEL_DIR}" \
-        "CFLAGS+=${CFLAGS_EXTRA}" \
+        "CFLAGS=${CFLAGS_EXTRA}" \
         MAKE='make -e'
 }
 
@@ -78,7 +76,7 @@ deploy_artifacts() {
     sudo cp -v "${HVISOR_TOOL_DIR}/tools/hvisor" "${dest_dir}/"
     sudo cp -v "${HVISOR_TOOL_DIR}/driver/hvisor.ko" "${dest_dir}/"
     sudo cp -v "${DTS_DIR}/zone1-linux.dtb" "${dest_dir}/zone1-linux.dtb"
-    sudo cp -v "${CONFIG_DIR}/zone1-linux.json" "${dest_dir}/zone1-json"
+    sudo cp -v "${CONFIG_DIR}/zone1-linux.json" "${dest_dir}/zone1-linux.json"
     sudo cp -v "${CONFIG_DIR}/zone1-linux-virtio.json" "${dest_dir}/zone1-linux-virtio.json"
     sudo cp -v ${TEST_DIR}/testcase/* "${test_dest}/testcase/"
     sudo cp -v "${TEST_DIR}/textract_dmesg.sh" "${test_dest}/"

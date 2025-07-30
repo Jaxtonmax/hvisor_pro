@@ -137,19 +137,21 @@ jobs:
 
       - name: Run System Test
         # 解释：
-        # 使用 case 语句来替代 if/elif 结构，这种语法更健壮，可以避免潜在的 shell 解析错误。
-        # 1. 根据 matrix.arch 的值，将对应的 --sysroot 标志设置到一个变量 CFLAGS_EXTRA 中。
-        # 2. 在脚本最后，将这个变量作为 CFLAGS 的一部分传递给 make 命令。
-        # 这种方式分离了逻辑判断和命令执行，代码更清晰，不易出错。
+        # 问题的根源是项目的 Makefile 存在嵌套调用，导致在命令行上传递的 CFLAGS 变量
+        # 未能传递到最终编译 cJSON 的子 make 进程。
+        #
+        # 解决方案是：在调用 make 之前，使用 `export CFLAGS=...` 将其设置为一个
+        # 环境变量。这样，后续启动的所有 make 进程都会继承这个环境变量，确保
+        # --sysroot 参数能被最终的编译器接收，从而解决问题。
         run: |
-          CFLAGS_EXTRA=""
           case "${{ matrix.arch }}" in
             riscv64)
-              CFLAGS_EXTRA="--sysroot=/usr/riscv64-linux-gnu"
+              export CFLAGS="--sysroot=/usr/riscv64-linux-gnu"
               ;;
             aarch64)
-              CFLAGS_EXTRA="--sysroot=/usr/aarch64-linux-gnu"
+              export CFLAGS="--sysroot=/usr/aarch64-linux-gnu"
               ;;
           esac
           
-          make stest CFLAGS="${CFLAGS_EXTRA}"
+          # 直接运行 make stest，它会自动从环境中继承上面 export 的 CFLAGS。
+          make stest

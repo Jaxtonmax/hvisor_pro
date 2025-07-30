@@ -136,20 +136,6 @@ jobs:
           echo "BOARD=${{ matrix.board }}" >> $GITHUB_ENV
 
       - name: Run System Test
-        # 解释：
-        # 根本问题是交叉编译器在编译 cJSON 子模块时，没有找到正确的系统头文件路径，
-        # 导致 #include_next <limits.h> 失败。
-        # 之前的解决方案尝试通过 `export CC=... --sysroot=...` 来修正，但这在复杂的
-        # Makefile 调用链中（特别是依赖生成规则）可能会失效。
-        #
-        # 最终解决方案：
-        # 我们采用一种更明确、更强制的方式。除了设置 CC 和 --sysroot，我们还显式地
-        # 使用 CFLAGS 环境变量，通过 -I 参数直接将正确的头文件搜索路径注入到每一次
-        # 编译器调用中。
-        # 1. `-I/usr/{arch}-linux-gnu/include`: 这是目标架构的 C 库头文件所在位置。
-        # 2. `-I/usr/lib/gcc-cross/{arch}-linux-gnu/11/include-fixed`: 这是 GCC 
-        #    为解决 #include_next 这类问题提供的修正头文件路径。
-        # 3. 我们继续使用 `make -e` 确保这些环境变量能够覆盖 Makefile 内部的定义。
         run: |
           case "${{ matrix.arch }}" in
             riscv64)
@@ -158,8 +144,6 @@ jobs:
               ;;
             aarch64)
               export CC="aarch64-linux-gnu-gcc --sysroot=/usr/aarch64-linux-gnu"
-              # 注意：这里的 '11' 是基于您 riscv64 环境中的 GCC 版本。如果 aarch64 使用不同版本的 GCC，需要相应调整。
-              # 在 ghcr.io/jaxtonmax/hvisor-ci:22.04_pro 镜像中，版本是相同的。
               export CFLAGS="-I/usr/aarch64-linux-gnu/include -I/usr/lib/gcc-cross/aarch64-linux-gnu/11/include-fixed -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0"
               ;;
           esac

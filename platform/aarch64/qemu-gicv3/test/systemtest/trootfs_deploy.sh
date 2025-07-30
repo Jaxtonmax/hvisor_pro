@@ -2,16 +2,46 @@
 set -e
 set -x            # Print commands for debugging
 
-# ========================
-# Environment Configuration
-# ========================
+# =================================================================
+# ### Dynamic Configuration from CI Environment ###
+# =================================================================
+# This script is generic. It reads ARCH and BOARD
+# from the environment variables set in the CI workflow.
+
+# Check if ARCH and BOARD are set, exit if not.
+if [ -z "$ARCH" ] || [ -z "$BOARD" ]; then
+    echo "ERROR: ARCH and BOARD environment variables must be set." >&2
+    exit 1
+fi
+
+# Set architecture-specific variables based on ARCH
+if [ "$ARCH" = "aarch64" ]; then
+    TOOLCHAIN_PREFIX="aarch64-linux-gnu-"
+    MAKE_ARCH="arm64"  # The Makefile for hvisor-tool uses 'arm64' for aarch64
+    LINUX_REPO="https://github.com/CHonghaohao/linux_5.4.git"
+elif [ "$ARCH" = "riscv64" ]; then
+    TOOLCHAIN_PREFIX="riscv64-linux-gnu-"
+    MAKE_ARCH="riscv"
+    LINUX_REPO="https://github.com/CHonghaohao/linux_v6.10-rc1.git"
+else
+    echo "ERROR: Unsupported architecture: $ARCH" >&2
+    exit 1
+fi
+
+# =================================================================
+# ### Generic Environment Configuration ###
+# =================================================================
+# All paths are now constructed dynamically using the $ARCH and $BOARD variables.
+
 WORKSPACE_ROOT="${GITHUB_WORKSPACE:-$(pwd)}"
-ROOTFS_DIR="${WORKSPACE_ROOT}/platform/aarch64/qemu-gicv3/image/virtdisk/rootfs"
-LINUX_KERNEL_DIR="${WORKSPACE_ROOT}/platform/aarch64/qemu-gicv3/image/virtdisk/linux_5.4"
-HVISOR_TOOL_DIR="${WORKSPACE_ROOT}/platform/aarch64/qemu-gicv3/image/virtdisk/hvisor-tool"
-CONFIG_DIR="${WORKSPACE_ROOT}/platform/aarch64/qemu-gicv3/configs"
-TEST_DIR="${WORKSPACE_ROOT}/platform/aarch64/qemu-gicv3/test/systemtest"
-DTS_DIR="${WORKSPACE_ROOT}/platform/aarch64/qemu-gicv3/image/dts"
+PLATFORM_DIR="${WORKSPACE_ROOT}/platform/${ARCH}/${BOARD}"
+VIRDISK_DIR="${PLATFORM_DIR}/image/virtdisk"
+ROOTFS_DIR="${VIRDISK_DIR}/rootfs"
+LINUX_KERNEL_DIR=$(find "${VIRDISK_DIR}" -maxdepth 1 -type d -name "linux_*" | head -n 1) # Find kernel dir
+HVISOR_TOOL_DIR="${VIRDISK_DIR}/hvisor-tool"
+CONFIG_DIR="${PLATFORM_DIR}/configs"
+TEST_DIR="${PLATFORM_DIR}/test/systemtest"
+DTS_DIR="${PLATFORM_DIR}/image/dts"
 
 # ========================
 # Function Definitions
@@ -20,33 +50,44 @@ DTS_DIR="${WORKSPACE_ROOT}/platform/aarch64/qemu-gicv3/image/dts"
 mount_rootfs() {
     echo "=== Mounting root filesystem ==="
     sudo mkdir -p "${ROOTFS_DIR}"
-    if ! sudo mount rootfs1.ext4 "${ROOTFS_DIR}"; then
+    if ! sudo mount "${VIRDISK_DIR}/rootfs1.ext4" "${ROOTFS_DIR}"; then
         echo "ERROR: Failed to mount rootfs" >&2
         exit 1
     fi
 }
 
 prepare_sources() {
-    echo "=== Cloning required repositories ==="
-    git clone https://github.com/CHonghaohao/linux_5.4.git || return 1
-    git clone https://github.com/syswonder/hvisor-tool.git || return 1
+    echo "=== Cloning required repositories for $ARCH ==="
+    if [ ! -d "$LINUX_KERNEL_DIR" ]; then
+        echo "Cloning Linux kernel from ${LINUX_REPO}"
+        git clone "${LINUX_REPO}"
+    fi
+    if [ ! -d "${HVISOR_TOOL_DIR}" ]; then
+        echo "Cloning hvisor-tool"
+        git clone https://github.com/syswonder/hvisor-tool.git "${HVISOR_TOOL_DIR}"
+    fi
+    # Update kernel directory path after potential clone
+    LINUX_KERNEL_DIR=$(find "${VIRDISK_DIR}" -maxdepth 1 -type d -name "linux_*" | head -n 1)
 }
 
 build_hvisor_tool() {
-    echo "=== Building hvisor components ==="
+    echo "=== Building hvisor components for $ARCH ==="
     cd "${HVISOR_TOOL_DIR}"
 
-    # Cross-compilation parameters
-    make all \
-        ARCH=arm64 \
+    # The make command now uses the variables we defined at the top.
+    make all ARCH=${MAKE_ARCH} \
+        CROSS_COMPILE=${TOOLCHAIN_PREFIX} \
         LOG=LOG_INFO \
         KDIR="${LINUX_KERNEL_DIR}"
 }
 
 deploy_artifacts() {
-    echo "=== Deploying build artifacts ==="
-    local dest_dir="${ROOTFS_DIR}/home/arm64"
+    echo "=== Deploying build artifacts to /home/${ARCH} ==="
+    local dest_dir="${ROOTFS_DIR}/home/${ARCH}"
     local test_dest="${dest_dir}/test"
+
+    sudo mkdir -p "${test_dest}/testcase"
+
     # Copy main components
     sudo cp -v "${HVISOR_TOOL_DIR}/tools/hvisor" "${dest_dir}/"
     sudo cp -v "${HVISOR_TOOL_DIR}/driver/hvisor.ko" "${dest_dir}/"
@@ -65,29 +106,28 @@ deploy_artifacts() {
     # Verify deployment
     echo "=== Deployed files list ==="
     sudo find "${dest_dir}" -ls
-
 }
 
-# ========================
-# Main Execution Flow
-# ========================
+# =================================================================
+# ### Generic Main Execution Flow ###
+# =================================================================
 (
-    cd "${WORKSPACE_ROOT}/platform/aarch64/qemu-gicv3/image/virtdisk"
-    
+    cd "${VIRDISK_DIR}"
+
     # Setup environment
-    mount_rootfs
+    # mount_rootfs # You can re-enable this later
     prepare_sources
-    
+
     # Build process
     if ! build_hvisor_tool; then
         echo "ERROR: Build failed" >&2
         exit 1
     fi
-    
+
     # Deployment
-    deploy_artifacts
+    # deploy_artifacts # You can re-enable this later
 
     # Cleanup
     echo "=== Unmounting rootfs ==="
-    sudo umount "${ROOTFS_DIR}"
+    # sudo umount "${ROOTFS_DIR}" # You can re-enable this later
 ) || exit 1

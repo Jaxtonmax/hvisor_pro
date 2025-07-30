@@ -36,6 +36,15 @@ build_hvisor_tool() {
     echo "=== Building hvisor components ==="
     cd "${HVISOR_TOOL_DIR}"
 
+    case "${ARCH}" in
+        riscv64)
+            export CC="riscv64-linux-gnu-gcc --sysroot=/usr/riscv64-linux-gnu -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0"
+            ;;
+        aarch64)
+            export CC="aarch64-linux-gnu-gcc --sysroot=/usr/aarch64-linux-gnu -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0"
+            ;;
+    esac
+
     # Cross-compilation parameters
     make -e all \
         ARCH=riscv \

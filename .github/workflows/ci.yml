@@ -106,29 +106,37 @@ jobs:
           echo "ARCH=${{ matrix.arch }}" >> $GITHUB_ENV
           echo "BOARD=${{ matrix.board }}" >> $GITHUB_ENV
 
-      # 关键修复：在这里隔离并构建 hvisor-tool
-      - name: Build hvisor-tool in an Isolated Environment
+      - name: Clone and Build hvisor-tool in an Isolated Environment
         run: |
-          echo "--- Building hvisor-tool for ${{ matrix.arch }} ---"
+          echo "--- Cloning and building hvisor-tool for ${{ matrix.arch }} ---"
           
-          # 1. 定位到 hvisor-tool 的父目录
-          HVISOR_TOOL_DIR="${{ github.workspace }}/platform/${{ matrix.arch }}/${{ matrix.board }}/image/virtdisk/hvisor-tool"
+          # 1. 定义 hvisor-tool 应该被克隆到的目录
+          VIRDISK_DIR="${{ github.workspace }}/platform/${{ matrix.arch }}/${{ matrix.board }}/image/virtdisk"
           
-          # 2. 确定传递给 hvisor-tool Makefile 的架构参数
-          MAKE_ARCH="" # 修正：移除 local 关键字
-          if [ "${{ matrix.arch }}" == "aarch64" ]; then
+          # 2. (修复No such file or directory) 克隆 hvisor-tool 仓库
+          echo "Cloning hvisor-tool into ${VIRDISK_DIR}"
+          cd "${VIRDISK_DIR}"
+          git clone https://github.com/syswonder/hvisor-tool.git
+          
+          # 3. 定义 hvisor-tool 内部的 'tools' 目录的完整路径
+          HVISOR_TOOL_TOOLS_DIR="${VIRDISK_DIR}/hvisor-tool/tools"
+
+          # 4. 确定传递给 Makefile 的架构参数
+          MAKE_ARCH=""
+          # (修复unexpected operator) 使用单等号'='以兼容所有POSIX shell
+          if [ "${{ matrix.arch }}" = "aarch64" ]; then
             MAKE_ARCH="arm64"
-          elif [ "${{ matrix.arch }}" == "riscv64" ]; then
+          elif [ "${{ matrix.arch }}" = "riscv64" ]; then
             MAKE_ARCH="riscv"
           fi
           
-          # 3. 在隔离的环境中执行构建
-          make -C "${HVISOR_TOOL_DIR}/tools" all ARCH=${MAKE_ARCH} LIBC=gnu
+          # 5. 在隔离的环境中执行构建，确保在正确的目录中执行
+          echo "Running make in ${HVISOR_TOOL_TOOLS_DIR}"
+          make -C "${HVISOR_TOOL_TOOLS_DIR}" all ARCH=${MAKE_ARCH} LIBC=gnu
           
           echo "--- hvisor-tool build complete ---"
 
-      # 关键修复：告诉主构建脚本跳过它自己的 hvisor-tool 构建步骤
       - name: Run System Test (skipping tool build)
         run: |
           export SKIP_HVISOR_TOOL_BUILD=true
-          make stest```
+          make stest

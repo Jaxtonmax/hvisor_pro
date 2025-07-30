@@ -119,22 +119,22 @@ jobs:
           echo "Cloning hvisor-tool repository"
           git clone https://github.com/syswonder/hvisor-tool.git
           
-          # --- 关键修复：进入 hvisor-tool 目录，然后执行所有后续操作 ---
           cd hvisor-tool
           echo "Initializing submodules from $(pwd)"
           git submodule update --init --recursive
           
-          # --- 关键修复：导出 CC 环境变量，并使用 make -e ---
+          # --- 关键修复：放弃修改 CC，转而注入 CFLAGS ---
           MAKE_ARCH=""
           if [ "${{ matrix.arch }}" = "aarch64" ]; then
             MAKE_ARCH="arm64"
-            export CC="aarch64-linux-gnu-gcc --sysroot=/usr/aarch64-linux-gnu -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0"
+            export CFLAGS="--sysroot=/usr/aarch64-linux-gnu -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0"
           elif [ "${{ matrix.arch }}" = "riscv64" ]; then
             MAKE_ARCH="riscv"
-            export CC="riscv64-linux-gnu-gcc --sysroot=/usr/riscv64-linux-gnu -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0"
+            export CFLAGS="--sysroot=/usr/riscv64-linux-gnu -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0"
           fi
           
-          echo "Running make -e all from $(pwd)"
+          echo "Running make -e all with CFLAGS: ${CFLAGS}"
+          # 使用 -e 强制环境变量覆盖 Makefile 内部的 CFLAGS 定义
           make -e all ARCH=${MAKE_ARCH} LIBC=gnu
           
           echo "--- hvisor-tool build complete ---"

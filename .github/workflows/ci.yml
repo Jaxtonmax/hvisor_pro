@@ -137,25 +137,29 @@ jobs:
 
       - name: Run System Test
         # 解释：
-        # 问题的根源是项目的深层嵌套 Makefile 强制覆盖了 CFLAGS 变量，
-        # 导致我们传入的 --sysroot 参数丢失。
+        # 我们遇到的核心问题是，无论如何设置 CFLAGS，它都会被 hvisor-tool 内部的
+        # 嵌套 Makefile 重置，导致我们的修复参数丢失。
         #
         # 最终解决方案：
-        # 1. 使用 `export CFLAGS=...` 将正确的 CFLAGS 设置为环境变量。
-        #    在这里我们添加了 -U_FORTIFY_SOURCE 和 -D_FORTIFY_SOURCE=0 来解决
-        #    在交叉编译环境中遇到的 glibc 头文件解析错误。
-        # 2. 调用 make 时，使用 `-e` (`--environment-overrides`) 标志。
-        #    此标志会强制 make 使用环境变量中的值，覆盖任何 Makefile 内部的定义。
-        #    这就确保了我们设置的 --sysroot 和其他标志能被最终的编译器使用。
+        # 我们不再尝试修改 CFLAGS。我们将采取一种更强制的手段：直接修改 CC (C Compiler) 变量。
+        # 我们将编译参数直接附加在编译器名称后面。当 make 调用 $(CC) 时，它会展开成
+        # 一个包含了我们所有参数的完整命令。
+        # 这种方法几乎不可能被 Makefile 内部的逻辑所覆盖，是解决此类顽固问题的终极手段。
+        #
+        # 1. 我们为不同的架构定义了正确的交叉编译器名称。
+        # 2. 我们将 --sysroot 和解决 glibc 问题的 -U... -D... 参数直接附加在编译器后面。
+        # 3. 我们将这个完整的命令导出为 CC 环境变量。
+        # 4. 我们继续使用 `make -e` 标志，确保这个 CC 环境变量能够覆盖 Makefile 内部可能存在的任何 CC 定义。
         run: |
           case "${{ matrix.arch }}" in
             riscv64)
-              export CFLAGS="--sysroot=/usr/riscv64-linux-gnu -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0"
+              export CC="riscv64-linux-gnu-gcc --sysroot=/usr/riscv64-linux-gnu -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0"
               ;;
             aarch64)
-              export CFLAGS="--sysroot=/usr/aarch64-linux-gnu -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0"
+              export CC="aarch64-linux-gnu-gcc --sysroot=/usr/aarch64-linux-gnu -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0"
               ;;
           esac
           
-          # 使用 -e 标志强制环境变量覆盖 Makefile 中的设置
+          # 我们不再需要单独设置 CFLAGS，因为所有参数都已经包含在 CC 变量里了。
+          # 我们依然使用 -e 标志来确保我们导出的 CC 环境变量能够覆盖 Makefile 中的任何设置。
           make -e stest

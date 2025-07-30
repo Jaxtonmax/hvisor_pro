@@ -37,9 +37,8 @@ build_hvisor_tool() {
     cd "${HVISOR_TOOL_DIR}"
 
     # Cross-compilation parameters
-# 在 hvisor-tool 目录中
-    make all ARCH=riscv \
-        CROSS_COMPILE=riscv64-linux-gnu- \
+    make all \
+        ARCH=riscv \
         LOG=LOG_INFO \
         KDIR="${LINUX_KERNEL_DIR}"
 }

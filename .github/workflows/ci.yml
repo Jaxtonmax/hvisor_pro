@@ -137,12 +137,14 @@ jobs:
 
       - name: Run System Test
         # 解释：
-        # 问题的根源是项目的 Makefile 存在嵌套调用，导致在命令行上传递的 CFLAGS 变量
-        # 未能传递到最终编译 cJSON 的子 make 进程。
+        # 问题的根源是项目的深层嵌套 Makefile 强制覆盖了 CFLAGS 变量，
+        # 导致我们传入的 --sysroot 参数丢失。
         #
-        # 解决方案是：在调用 make 之前，使用 `export CFLAGS=...` 将其设置为一个
-        # 环境变量。这样，后续启动的所有 make 进程都会继承这个环境变量，确保
-        # --sysroot 参数能被最终的编译器接收，从而解决问题。
+        # 最终解决方案：
+        # 1. 使用 `export CFLAGS=...` 将正确的 CFLAGS 设置为环境变量。
+        # 2. 调用 make 时，使用 `-e` (`--environment-overrides`) 标志。
+        #    此标志会强制 make 使用环境变量中的值，覆盖任何 Makefile 内部的定义。
+        #    这就确保了我们设置的 --sysroot 能被最终的编译器使用。
         run: |
           case "${{ matrix.arch }}" in
             riscv64)
@@ -153,5 +155,5 @@ jobs:
               ;;
           esac
           
-          # 直接运行 make stest，它会自动从环境中继承上面 export 的 CFLAGS。
-          make stest
+          # 使用 -e 标志强制环境变量覆盖 Makefile 中的设置
+          make -e stest

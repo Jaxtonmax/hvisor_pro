@@ -41,7 +41,7 @@ build_hvisor_tool() {
         ARCH=arm64 \
         LOG=LOG_INFO \
         KDIR="${LINUX_KERNEL_DIR}"
-        CFLAGS+="-U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0"
+        CFLAGS+="-U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0" \
         MAKE='make -e'
 }
 

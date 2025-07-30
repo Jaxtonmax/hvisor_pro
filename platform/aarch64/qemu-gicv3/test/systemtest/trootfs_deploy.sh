@@ -95,9 +95,14 @@ deploy_artifacts() {
     cd "${WORKSPACE_ROOT}/platform/aarch64/qemu-gicv3/image/virtdisk"
     mount_rootfs
     prepare_sources
-    if ! build_hvisor_tool; then
-        echo "ERROR: Build failed" >&2
-        exit 1
+    if [ "$SKIP_BUILD" != "true" ]; then
+      echo "--- Build step is enabled. Starting build... ---"
+      if ! build_hvisor_tool; then
+          echo "ERROR: Build failed" >&2
+          exit 1
+      fi
+    else
+      echo "--- SKIP_BUILD is true. Skipping build step. ---"
     fi
     deploy_artifacts
     echo "=== Unmounting rootfs ==="

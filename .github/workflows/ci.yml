@@ -124,18 +124,27 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: 'true'
+
       - name: Reset Rustup to Official Servers
         run: |
           echo "RUSTUP_DIST_SERVER=https://static.rust-lang.org" >> $GITHUB_ENV
           echo "RUSTUP_UPDATE_ROOT=https://static.rust-lang.org/rustup" >> $GITHUB_ENV
+
       - name: Set up environment variables
         run: |
           echo "ARCH=${{ matrix.arch }}" >> $GITHUB_ENV
           echo "BOARD=${{ matrix.board }}" >> $GITHUB_ENV
+
       - name: Run System Test
-        # 为 riscv64 架构添加 CFLAGS 来解决 glibc 头文件编译错误
+        # 解释：
+        # 对交叉编译任务，通过 CFLAGS="--sysroot=/path/to/sysroot" 的方式，
+        # 强制编译器使用对应架构的正确系统根（sysroot），而不是主机的头文件。
+        # 这从根本上解决了因引用错误头文件而导致的 glibc 宏未定义编译错误。
         run: |
           if [ "${{ matrix.arch }}" = "riscv64" ]; then
-            export CFLAGS="-D__GNUC_PREREQ\(a,b\)=1 -D__GLIBC_USE\(a\)=1"
-          fi
-          make stest
+            make stest CFLAGS="--sysroot=/usr/riscv64-linux-gnu"
+          elif [ "${{ matrix.arch }}" = "aarch64" ]; then
+            make stest CFLAGS="--sysroot=/usr/aarch64-linux-gnu"
+          else
+            make stest
+          fi```

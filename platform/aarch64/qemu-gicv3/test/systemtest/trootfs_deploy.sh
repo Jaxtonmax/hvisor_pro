@@ -28,7 +28,6 @@ mount_rootfs() {
 
 prepare_sources() {
     echo "=== Cloning required repositories ==="
-    # 克隆 aarch64 需要的正确内核版本
     if [ ! -d "linux_5.4" ]; then
         git clone https://github.com/CHonghaohao/linux_5.4.git || return 1
     fi
@@ -41,24 +40,31 @@ build_hvisor_tool() {
     echo "=== Building hvisor components ==="
     cd "${HVISOR_TOOL_DIR}"
 
+    # 【关键修正：釜底抽薪】
+    # 在编译前，直接用 sed 命令修改 hvisor-tool 的 Makefile，
+    # 将其内部污染环境的 CFLAGS += ... 这一行注释掉。
+    # 这是解决问题的最根本方法。
+    echo "--- Patching hvisor-tool/tools/Makefile to prevent environment pollution ---"
+    sed -i 's/^\(CFLAGS += -I\/usr\/aarch64-linux-gnu\/include.*\)/# \1/' tools/Makefile
+    echo "--- Patching complete. Displaying patched file content: ---"
+    cat tools/Makefile
+    echo "--- End of patched file content ---"
+
+
     local MAKE_ARCH=""
 
     case "${ARCH}" in
         riscv64)
-            # riscv64 的配置
             export CC='riscv64-linux-gnu-gcc --sysroot=/usr/riscv64-linux-gnu -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0'
             MAKE_ARCH="riscv"
             ;;
         aarch64)
-            # 【终极修正】将所有编译标志直接注入 CC 变量。
             export CC='aarch64-linux-gnu-gcc --sysroot=/usr/aarch64-linux-gnu -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0'
-            # 将 CI 的标准架构名 'aarch64' 翻译为 Makefile 期望的 'arm64'
             MAKE_ARCH="arm64"
             ;;
     esac
 
-    # 【终极修正】调用 make 时，将 CFLAGS 强制设置为空，防止 Makefile 内部的任何污染。
-    # 所有的编译环境控制现在都由我们上面定义的 CC 变量全权负责。
+    # 我们依然使用劫持 CC 和清空 CFLAGS 的方法作为双重保险。
     make -e all \
         ARCH=${MAKE_ARCH} \
         LOG=LOG_INFO \
@@ -68,7 +74,7 @@ build_hvisor_tool() {
 }
 
 deploy_artifacts() {
-    # ... 此函数内容无需修改，它使用 aarch64 特定的路径 ...
+    # ... 此函数内容无需修改 ...
     echo "=== Deploying build artifacts ==="
     local dest_dir="${ROOTFS_DIR}/home/arm64"
     local test_dest="${dest_dir}/test"
@@ -95,14 +101,9 @@ deploy_artifacts() {
     cd "${WORKSPACE_ROOT}/platform/aarch64/qemu-gicv3/image/virtdisk"
     mount_rootfs
     prepare_sources
-    if [ "$SKIP_BUILD" != "true" ]; then
-      echo "--- Build step is enabled. Starting build... ---"
-      if ! build_hvisor_tool; then
-          echo "ERROR: Build failed" >&2
-          exit 1
-      fi
-    else
-      echo "--- SKIP_BUILD is true. Skipping build step. ---"
+    if ! build_hvisor_tool; then
+        echo "ERROR: Build failed" >&2
+        exit 1
     fi
     deploy_artifacts
     echo "=== Unmounting rootfs ==="

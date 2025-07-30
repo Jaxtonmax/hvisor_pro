@@ -36,30 +36,35 @@ prepare_sources() {
     fi
 }
 
+# ... 在 riscv64 的脚本中 ...
+
 build_hvisor_tool() {
     echo "=== Building hvisor components ==="
     cd "${HVISOR_TOOL_DIR}"
+
+    # 【关键修正：釜底抽薪】
+    # 对 riscv64 也进行同样的手术，注释掉其 Makefile 中污染环境的 CFLAGS。
+    echo "--- Patching hvisor-tool/tools/Makefile to prevent environment pollution ---"
+    sed -i 's/^\(CFLAGS += -I\/usr\/riscv64-linux-gnu\/include.*\)/# \1/' tools/Makefile
+    echo "--- Patching complete. Displaying patched file content: ---"
+    cat tools/Makefile
+    echo "--- End of patched file content ---"
+
 
     local MAKE_ARCH=""
 
     case "${ARCH}" in
         riscv64)
-            # 【终极修正】将所有编译标志直接注入 CC 变量。
-            # 我们将 --sysroot 和其他必要的标志与编译器本身绑定在一起。
             export CC='riscv64-linux-gnu-gcc --sysroot=/usr/riscv64-linux-gnu -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0'
-            # 将 CI 的标准架构名 'riscv64' 翻译为 Makefile 期望的 'riscv'
             MAKE_ARCH="riscv"
             ;;
         aarch64)
-            # 【终极修正】对 aarch64 也采用同样策略。
             export CC='aarch64-linux-gnu-gcc --sysroot=/usr/aarch64-linux-gnu -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0'
-            # 将 CI 的标准架构名 'aarch64' 翻译为 Makefile 期望的 'arm64'
             MAKE_ARCH="arm64"
             ;;
     esac
 
-    # 【终极修正】调用 make 时，将 CFLAGS 强制设置为空，防止 Makefile 内部的任何污染。
-    # 所有的编译环境控制现在都由我们上面定义的 CC 变量全权负责。
+    # 双重保险
     make -e all \
         ARCH=${MAKE_ARCH} \
         LOG=LOG_INFO \

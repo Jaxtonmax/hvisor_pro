@@ -119,25 +119,31 @@ jobs:
           echo "Cloning hvisor-tool repository"
           git clone https://github.com/syswonder/hvisor-tool.git
           
-          # --- 关键修复 ---
-          # 进入 hvisor-tool 目录并初始化其子模块 (cJSON)
           echo "Initializing submodules for hvisor-tool"
           cd hvisor-tool
           git submodule update --init --recursive
-          cd .. # 返回上一级目录
-          # --- 修复结束 ---
+          cd ..
           
           HVISOR_TOOL_TOOLS_DIR="${VIRDISK_DIR}/hvisor-tool/tools"
 
+          # --- 关键修复：定义带有正确 Sysroot 的编译器 ---
           MAKE_ARCH=""
+          CC_WITH_SYSROOT=""
           if [ "${{ matrix.arch }}" = "aarch64" ]; then
             MAKE_ARCH="arm64"
+            CC_WITH_SYSROOT="aarch64-linux-gnu-gcc --sysroot=/usr/aarch64-linux-gnu"
           elif [ "${{ matrix.arch }}" = "riscv64" ]; then
             MAKE_ARCH="riscv"
+            CC_WITH_SYSROOT="riscv64-linux-gnu-gcc --sysroot=/usr/riscv64-linux-gnu"
           fi
+          # --- 修复结束 ---
           
           echo "Running make in ${HVISOR_TOOL_TOOLS_DIR}"
-          make -C "${HVISOR_TOOL_TOOLS_DIR}" all ARCH=${MAKE_ARCH} LIBC=gnu
+          # 在 make 命令中覆盖 CC 变量
+          make -C "${HVISOR_TOOL_TOOLS_DIR}" all \
+            ARCH=${MAKE_ARCH} \
+            LIBC=gnu \
+            CC="${CC_WITH_SYSROOT}"
           
           echo "--- hvisor-tool build complete ---"
 

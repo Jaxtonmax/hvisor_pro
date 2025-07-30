@@ -6,21 +6,19 @@ on:
     branches: [ main, dev ]
   workflow_dispatch:
 
-
 jobs:
-  linter-and-license:
+  # 优化点：将linter和license检查合并，因为它们依赖的环境相似，可以减少job启动的开销
+  lint-and-license:
     name: Linter & License Check
     runs-on: ubuntu-22.04
     container: ghcr.io/jaxtonmax/hvisor-ci:22.04_pro
     steps:
-      - name: Reset Rustup to Official Servers
-        run: |
-          echo "RUSTUP_DIST_SERVER=https://static.rust-lang.org" >> $GITHUB_ENV
-          echo "RUSTUP_UPDATE_ROOT=https://static.rust-lang.org/rustup" >> $GITHUB_ENV
       - name: Checkout Repository
         uses: actions/checkout@v4
+
       - name: Format Check
         run: make fmt-test
+
       - name: License Check
         run: ./tools/license_checker.sh
 
@@ -39,16 +37,13 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
-      - name: Reset Rustup to Official Servers
-        run: |
-          echo "RUSTUP_DIST_SERVER=https://static.rust-lang.org" >> $GITHUB_ENV
-          echo "RUSTUP_UPDATE_ROOT=https://static.rust-lang.org/rustup" >> $GITHUB_ENV
+
       - name: Set up environment variables
         run: |
           echo "ARCH=${{ matrix.arch }}" >> $GITHUB_ENV
           echo "BOARD=${{ matrix.board }}" >> $GITHUB_ENV
+          
       - name: Run Unit Test
-        # 所有依赖已在镜像中，直接运行测试
         run: make test
 
   build:
@@ -68,25 +63,17 @@ jobs:
           - { arch: aarch64, board: "ok6254-c" }
           - { arch: riscv64, board: "qemu-aia" }
           - { arch: riscv64, board: "qemu-plic" }
-          # LoongArch 构建任务也在这里
           - { arch: loongarch64, board: "ls3a5000" }
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Reset Rustup to Official Servers
-        run: |
-          echo "RUSTUP_DIST_SERVER=https://static.rust-lang.org" >> $GITHUB_ENV
-          echo "RUSTUP_UPDATE_ROOT=https://static.rust-lang.org/rustup" >> $GITHUB_ENV
-
-      # --- 关键优化：为 LoongArch 动态加载工具链 ---
+      # 优化点：为LoongArch动态加载并缓存工具链，这非常棒！
       - name: Cache and Install LoongArch Toolchain
         if: matrix.arch == 'loongarch64'
         uses: actions/cache@v4
         with:
-          # 需要缓存的目录
           path: /opt/loongarch-toolchain
-          # 缓存的唯一标识，如果工具链更新，可以修改这个 key 来刷新缓存
           key: ${{ runner.os }}-loongarch-toolchain-v8.0
       
       - name: Download LoongArch Toolchain if not cached
@@ -99,11 +86,11 @@ jobs:
         if: matrix.arch == 'loongarch64'
         run: echo "/opt/loongarch-toolchain/cross-tools/bin" >> $GITHUB_PATH
       
-      # --- 核心构建步骤 ---
       - name: Set up environment variables
         run: |
           echo "ARCH=${{ matrix.arch }}" >> $GITHUB_ENV
           echo "BOARD=${{ matrix.board }}" >> $GITHUB_ENV
+          
       - name: Build
         run: make
 
@@ -112,68 +99,28 @@ jobs:
     runs-on: ubuntu-22.04
     container:
       image: ghcr.io/jaxtonmax/hvisor-ci:22.04_pro
+      # systemtest 可能需要特殊权限来操作虚拟化设备
       options: --cap-add=SYS_ADMIN --privileged
     strategy:
       fail-fast: false
       matrix:
         include:
-          - arch: aarch64
-            rustc_target: aarch64-unknown-none
-            board: "qemu-gicv3"
-          - arch: riscv64
-            rustc_target: riscv64gc-unknown-none-elf
-            board: "qemu-plic"
+          - { arch: aarch64, board: "qemu-gicv3" }
+          - { arch: riscv64, board: "qemu-plic" }
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+        # 关键：确保检出子模块，因为hvisor-tool依赖cJSON
         with:
-          submodules: 'true'
-
-      - name: Reset Rustup to Official Servers
-        run: |
-          echo "RUSTUP_DIST_SERVER=https://static.rust-lang.org" >> $GITHUB_ENV
-          echo "RUSTUP_UPDATE_ROOT=https://static.rust-lang.org/rustup" >> $GITHUB_ENV
+          submodules: 'recursive'
 
       - name: Set up environment variables
         run: |
           echo "ARCH=${{ matrix.arch }}" >> $GITHUB_ENV
           echo "BOARD=${{ matrix.board }}" >> $GITHUB_ENV
 
+      # 修复点：删除所有手动的、复杂的构建脚本。
+      # 直接运行 'make stest'，让项目自己的Makefile来处理其依赖项（如hvisor-tool）的构建。
+      # Docker镜像已经提供了所有必要的编译器和库，Makefile现在可以正常工作了。
       - name: Run System Test
-        run: |
-          # 设置架构特定的编译环境
-          case "${{ matrix.arch }}" in
-            riscv64)
-              export SYSROOT_PATH="/usr/riscv64-linux-gnu"
-              export CROSS_PREFIX="riscv64-linux-gnu-"
-              ;;
-            aarch64)
-              export SYSROOT_PATH="/usr/aarch64-linux-gnu"
-              export CROSS_PREFIX="aarch64-linux-gnu-"
-              ;;
-          esac
-
-          # 强制设置所有必要的编译变量
-          export CC="${CROSS_PREFIX}gcc"
-          export CXX="${CROSS_PREFIX}g++"
-          export AR="${CROSS_PREFIX}ar"
-          export LD="${CROSS_PREFIX}ld"
-          
-          # 关键修复：同时设置 CFLAGS 和 CPPFLAGS
-          export CFLAGS="--sysroot=${SYSROOT_PATH} -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0"
-          export CPPFLAGS="-I${SYSROOT_PATH}/include"
-          export LDFLAGS="-L${SYSROOT_PATH}/lib -Wl,-rpath-link,${SYSROOT_PATH}/lib"
-          
-          # 递归传递变量给所有子make
-          export MAKE="make -e"
-          
-          # 显示环境变量用于调试
-          echo "=== Build Environment ==="
-          echo "CC=$CC"
-          echo "CFLAGS=$CFLAGS"
-          echo "CPPFLAGS=$CPPFLAGS"
-          echo "LDFLAGS=$LDFLAGS"
-          echo "MAKE=$MAKE"
-          
-          # 执行构建
-          make -e stest
+        run: make stest

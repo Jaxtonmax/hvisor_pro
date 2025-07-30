@@ -99,7 +99,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
-          submodules: 'recursive' # 确保检出所有子模块
+          submodules: 'recursive'
 
       - name: Set up environment variables
         run: |
@@ -115,7 +115,7 @@ jobs:
           HVISOR_TOOL_DIR="${{ github.workspace }}/platform/${{ matrix.arch }}/${{ matrix.board }}/image/virtdisk/hvisor-tool"
           
           # 2. 确定传递给 hvisor-tool Makefile 的架构参数
-          local MAKE_ARCH=""
+          MAKE_ARCH="" # 修正：移除 local 关键字
           if [ "${{ matrix.arch }}" == "aarch64" ]; then
             MAKE_ARCH="arm64"
           elif [ "${{ matrix.arch }}" == "riscv64" ]; then
@@ -123,9 +123,6 @@ jobs:
           fi
           
           # 3. 在隔离的环境中执行构建
-          # 我们不设置 CC 或 CFLAGS，让 hvisor-tool 的 Makefile 自己决定。
-          # 我们只提供它需要的参数：ARCH 和 LIBC。
-          # 这是解决环境污染问题的核心。
           make -C "${HVISOR_TOOL_DIR}/tools" all ARCH=${MAKE_ARCH} LIBC=gnu
           
           echo "--- hvisor-tool build complete ---"
@@ -133,7 +130,5 @@ jobs:
       # 关键修复：告诉主构建脚本跳过它自己的 hvisor-tool 构建步骤
       - name: Run System Test (skipping tool build)
         run: |
-          # 设置一个环境变量，让 'make stest' 跳过它内部的 build_hvisor_tool 步骤
-          # 注意：这需要你的顶层 Makefile 或者相关脚本能够识别这个变量
           export SKIP_HVISOR_TOOL_BUILD=true
-          make stest
+          make stest```

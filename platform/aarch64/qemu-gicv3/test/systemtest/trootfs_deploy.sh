@@ -28,8 +28,13 @@ mount_rootfs() {
 
 prepare_sources() {
     echo "=== Cloning required repositories ==="
-    git clone https://github.com/CHonghaohao/linux_5.4.git || return 1
-    git clone https://github.com/syswonder/hvisor-tool.git || return 1
+    # 如果目录已存在，假设代码已由CI的checkout步骤准备好，跳过clone
+    if [ ! -d "linux_5.4" ]; then
+        git clone https://github.com/CHonghaohao/linux_5.4.git || return 1
+    fi
+    if [ ! -d "hvisor-tool" ]; then
+        git clone https://github.com/syswonder/hvisor-tool.git || return 1
+    fi
 }
 
 build_hvisor_tool() {
@@ -40,25 +45,24 @@ build_hvisor_tool() {
 
     case "${ARCH}" in
         riscv64)
-            # 设置编译器
+            # 设置编译器和 sysroot
             export CC="riscv64-linux-gnu-gcc --sysroot=/usr/riscv64-linux-gnu"
-            # 准备需要强制注入的 CFLAGS
-            # --sysroot: 指定系统根，用于链接库
-            # -I/usr/riscv64-linux-gnu/include: 指定 C 标准库头文件路径
-            # -I/usr/lib/gcc-cross/riscv64-linux-gnu/11/include-fixed: 指定 GCC 修正头文件路径，解决 limits.h 问题
-            # -U_FORTIFY_SOURCE ...: 解决 glibc 版本安全检查问题
-            CFLAGS_EXTRA="--sysroot=/usr/riscv64-linux-gnu -I/usr/riscv64-linux-gnu/include -I/usr/lib/gcc-cross/riscv64-linux-gnu/11/include-fixed -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0"
+            # 【重要】仅使用 --sysroot，避免手动添加 -I 指定系统头文件路径，以防破坏编译器的头文件搜索顺序。
+            CFLAGS_EXTRA="--sysroot=/usr/riscv64-linux-gnu -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0"
             ;;
         aarch64)
+            # 设置编译器和 sysroot
             export CC="aarch64-linux-gnu-gcc --sysroot=/usr/aarch64-linux-gnu"
-            CFLAGS_EXTRA="--sysroot=/usr/aarch64-linux-gnu -I/usr/aarch64-linux-gnu/include -I/usr/lib/gcc-cross/aarch64-linux-gnu/11/include-fixed -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0"
+            # 【重要】仅使用 --sysroot，编译器会自动、正确地查找系统头文件，避免 "limits.h" 等编译错误。
+            # 同样地，移除冗余且有害的 -I 标志。
+            CFLAGS_EXTRA="--sysroot=/usr/aarch64-linux-gnu -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0"
             ;;
     esac
 
     # 在 make 命令中，将我们构造的 CFLAGS_EXTRA 添加进去
-    # 我们使用 CFLAGS+="${CFLAGS_EXTRA}" 的语法，确保所有标志都被正确传递
+    # 【重要】ARCH 参数必须与当前构建的架构匹配，使用 ${ARCH} 变量使其动态化。
     make -e all \
-        ARCH=riscv \
+        ARCH=${ARCH} \
         LOG=LOG_INFO \
         KDIR="${LINUX_KERNEL_DIR}" \
         "CFLAGS+=${CFLAGS_EXTRA}" \
@@ -69,6 +73,9 @@ deploy_artifacts() {
     echo "=== Deploying build artifacts ==="
     local dest_dir="${ROOTFS_DIR}/home/arm64"
     local test_dest="${dest_dir}/test"
+    # 创建目标目录，确保复制操作不会因目录不存在而失败
+    sudo mkdir -p "${dest_dir}"
+    sudo mkdir -p "${test_dest}/testcase"
     # Copy main components
     sudo cp -v "${HVISOR_TOOL_DIR}/tools/hvisor" "${dest_dir}/"
     sudo cp -v "${HVISOR_TOOL_DIR}/driver/hvisor.ko" "${dest_dir}/"
@@ -98,7 +105,8 @@ deploy_artifacts() {
     
     # Setup environment
     mount_rootfs
-    prepare_sources
+    # CI中代码已由 actions/checkout@v4 准备好，通常不需要再 clone
+    # prepare_sources
     
     # Build process
     if ! build_hvisor_tool; then

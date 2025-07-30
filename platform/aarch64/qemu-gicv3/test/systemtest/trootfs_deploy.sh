@@ -40,27 +40,27 @@ prepare_sources() {
 
 build_hvisor_tool() {
     echo "=== Building hvisor components ==="
-    # 进入 hvisor-tool 源码目录，这个目录是由 prepare_sources 克隆下来的
     cd "${HVISOR_TOOL_DIR}"
 
     local CFLAGS_EXTRA=""
+    local MAKE_ARCH="" # <--- 新增
 
     case "${ARCH}" in
         riscv64)
-            export CC="riscv64-linux-gnu-gcc --sysroot=/usr/riscv64-linux-gnu"
-            CFLAGS_EXTRA="--sysroot=/usr/riscv64-linux-gnu -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0"
+            # ...
+            MAKE_ARCH="riscv"
             ;;
         aarch64)
             export CC="aarch64-linux-gnu-gcc --sysroot=/usr/aarch64-linux-gnu"
-            # 【修正】只使用 --sysroot 来指定系统根，移除所有手动的 -I 系统路径，以避免头文件冲突
             CFLAGS_EXTRA="--sysroot=/usr/aarch64-linux-gnu -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0"
+            # 【关键修正】翻译 aarch64 -> arm64
+            MAKE_ARCH="arm64"
             ;;
     esac
 
-    # 在 make 命令中，将我们构造的 CFLAGS_EXTRA 添加进去
-    # 【修正】ARCH 参数必须使用 ${ARCH} 变量，以确保传递正确的架构 (aarch64)
+    # 【关键修正】使用 MAKE_ARCH
     make -e all \
-        ARCH=${ARCH} \
+        ARCH=${MAKE_ARCH} \
         LOG=LOG_INFO \
         KDIR="${LINUX_KERNEL_DIR}" \
         "CFLAGS+=${CFLAGS_EXTRA}" \

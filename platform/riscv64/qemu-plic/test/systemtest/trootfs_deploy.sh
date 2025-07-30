@@ -2,6 +2,7 @@
 set -e
 set -x            # Print commands for debugging
 
+# ... (Environment Configuration and other functions remain the same) ...
 # ========================
 # Environment Configuration
 # ========================
@@ -28,8 +29,6 @@ mount_rootfs() {
 
 prepare_sources() {
     echo "=== Cloning required repositories ==="
-    # 克隆编译所需的 hvisor-tool 和内核源码
-    # 这些仓库将被克隆到当前目录，也就是 virtdisk 目录
     if [ ! -d "linux_v6.10-rc1" ]; then
         git clone https://github.com/CHonghaohao/linux_v6.10-rc1.git || return 1
     fi
@@ -40,26 +39,29 @@ prepare_sources() {
 
 build_hvisor_tool() {
     echo "=== Building hvisor components ==="
-    # 进入 hvisor-tool 源码目录，这个目录是由 prepare_sources 克隆下来的
     cd "${HVISOR_TOOL_DIR}"
 
     local CFLAGS_EXTRA=""
+    local MAKE_ARCH="" # <--- 新增一个变量，用于传递给 make
 
     case "${ARCH}" in
         riscv64)
             export CC="riscv64-linux-gnu-gcc --sysroot=/usr/riscv64-linux-gnu"
-            # 【正确配置】只使用 --sysroot，移除所有手动的 -I 系统路径
             CFLAGS_EXTRA="--sysroot=/usr/riscv64-linux-gnu -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0"
+            # 【关键修正】将 CI 的标准架构名 'riscv64' 翻译为 Makefile 期望的 'riscv'
+            MAKE_ARCH="riscv"
             ;;
         aarch64)
             export CC="aarch64-linux-gnu-gcc --sysroot=/usr/aarch64-linux-gnu"
             CFLAGS_EXTRA="--sysroot=/usr/aarch64-linux-gnu -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0"
+            # 【关键修正】将 CI 的标准架构名 'aarch64' 翻译为 Makefile 期望的 'arm64'
+            MAKE_ARCH="arm64"
             ;;
     esac
 
-    # 【正确配置】使用 ${ARCH} 变量来动态设置架构
+    # 【关键修正】在 make 命令中使用我们翻译好的 MAKE_ARCH 变量
     make -e all \
-        ARCH=${ARCH} \
+        ARCH=${MAKE_ARCH} \
         LOG=LOG_INFO \
         KDIR="${LINUX_KERNEL_DIR}" \
         "CFLAGS+=${CFLAGS_EXTRA}" \
@@ -67,7 +69,7 @@ build_hvisor_tool() {
 }
 
 deploy_artifacts() {
-    # ... 此函数内容无需修改，保持原样即可 ...
+    # ... 此函数内容无需修改 ...
     echo "=== Deploying build artifacts ==="
     local dest_dir="${ROOTFS_DIR}/home/riscv64"
     local test_dest="${dest_dir}/test"
@@ -76,7 +78,7 @@ deploy_artifacts() {
     sudo cp -v "${HVISOR_TOOL_DIR}/tools/hvisor" "${dest_dir}/"
     sudo cp -v "${HVISOR_TOOL_DIR}/driver/hvisor.ko" "${dest_dir}/"
     sudo cp -v "${DTS_DIR}/zone1-linux.dtb" "${dest_dir}/zone1-linux.dtb"
-    sudo cp -v "${CONFIG_DIR}/zone1-linux.json" "${dest_dir}/zone1-linux.json"
+    sudo cp -v "${CONFIG_DIR}/zone1-linux.json" "${dest_dir}/zone1-json"
     sudo cp -v "${CONFIG_DIR}/zone1-linux-virtio.json" "${dest_dir}/zone1-linux-virtio.json"
     sudo cp -v ${TEST_DIR}/testcase/* "${test_dest}/testcase/"
     sudo cp -v "${TEST_DIR}/textract_dmesg.sh" "${test_dest}/"
@@ -92,19 +94,13 @@ deploy_artifacts() {
 # ========================
 (
     cd "${WORKSPACE_ROOT}/platform/riscv64/qemu-plic/image/virtdisk"
-    
     mount_rootfs
-    
-    # 【关键步骤】必须调用 prepare_sources 来克隆 hvisor-tool 仓库
     prepare_sources
-    
     if ! build_hvisor_tool; then
         echo "ERROR: Build failed" >&2
         exit 1
     fi
-    
     deploy_artifacts
-
     echo "=== Unmounting rootfs ==="
     sudo umount "${ROOTFS_DIR}"
 ) || exit 1

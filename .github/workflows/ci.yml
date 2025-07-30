@@ -119,30 +119,23 @@ jobs:
           echo "Cloning hvisor-tool repository"
           git clone https://github.com/syswonder/hvisor-tool.git
           
-          echo "Initializing submodules for hvisor-tool"
+          # --- 关键修复：进入 hvisor-tool 目录，然后执行所有后续操作 ---
           cd hvisor-tool
+          echo "Initializing submodules from $(pwd)"
           git submodule update --init --recursive
-          cd ..
           
-          HVISOR_TOOL_TOOLS_DIR="${VIRDISK_DIR}/hvisor-tool/tools"
-
+          # --- 关键修复：导出 CC 环境变量，并使用 make -e ---
           MAKE_ARCH=""
-          CC_WITH_SYSROOT=""
-          # --- 关键修复：添加 -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0 来禁用编译时强化 ---
           if [ "${{ matrix.arch }}" = "aarch64" ]; then
             MAKE_ARCH="arm64"
-            CC_WITH_SYSROOT="aarch64-linux-gnu-gcc --sysroot=/usr/aarch64-linux-gnu -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0"
+            export CC="aarch64-linux-gnu-gcc --sysroot=/usr/aarch64-linux-gnu -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0"
           elif [ "${{ matrix.arch }}" = "riscv64" ]; then
             MAKE_ARCH="riscv"
-            CC_WITH_SYSROOT="riscv64-linux-gnu-gcc --sysroot=/usr/riscv64-linux-gnu -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0"
+            export CC="riscv64-linux-gnu-gcc --sysroot=/usr/riscv64-linux-gnu -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0"
           fi
-          # --- 修复结束 ---
           
-          echo "Running make in ${HVISOR_TOOL_TOOLS_DIR}"
-          make -C "${HVISOR_TOOL_TOOLS_DIR}" all \
-            ARCH=${MAKE_ARCH} \
-            LIBC=gnu \
-            CC="${CC_WITH_SYSROOT}"
+          echo "Running make -e all from $(pwd)"
+          make -e all ARCH=${MAKE_ARCH} LIBC=gnu
           
           echo "--- hvisor-tool build complete ---"
 

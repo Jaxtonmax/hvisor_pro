@@ -142,16 +142,18 @@ jobs:
         #
         # 最终解决方案：
         # 1. 使用 `export CFLAGS=...` 将正确的 CFLAGS 设置为环境变量。
+        #    在这里我们添加了 -U_FORTIFY_SOURCE 和 -D_FORTIFY_SOURCE=0 来解决
+        #    在交叉编译环境中遇到的 glibc 头文件解析错误。
         # 2. 调用 make 时，使用 `-e` (`--environment-overrides`) 标志。
         #    此标志会强制 make 使用环境变量中的值，覆盖任何 Makefile 内部的定义。
-        #    这就确保了我们设置的 --sysroot 能被最终的编译器使用。
+        #    这就确保了我们设置的 --sysroot 和其他标志能被最终的编译器使用。
         run: |
           case "${{ matrix.arch }}" in
             riscv64)
-              export CFLAGS="--sysroot=/usr/riscv64-linux-gnu"
+              export CFLAGS="--sysroot=/usr/riscv64-linux-gnu -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0"
               ;;
             aarch64)
-              export CFLAGS="--sysroot=/usr/aarch64-linux-gnu"
+              export CFLAGS="--sysroot=/usr/aarch64-linux-gnu -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0"
               ;;
           esac
           

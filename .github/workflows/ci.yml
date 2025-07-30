@@ -7,7 +7,6 @@ on:
   workflow_dispatch:
 
 jobs:
-  # 优化点：将linter和license检查合并，因为它们依赖的环境相似，可以减少job启动的开销
   lint-and-license:
     name: Linter & License Check
     runs-on: ubuntu-22.04
@@ -15,10 +14,8 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
-
       - name: Format Check
         run: make fmt-test
-
       - name: License Check
         run: ./tools/license_checker.sh
 
@@ -37,12 +34,10 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
-
       - name: Set up environment variables
         run: |
           echo "ARCH=${{ matrix.arch }}" >> $GITHUB_ENV
           echo "BOARD=${{ matrix.board }}" >> $GITHUB_ENV
-          
       - name: Run Unit Test
         run: make test
 
@@ -67,30 +62,24 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
-
-      # 优化点：为LoongArch动态加载并缓存工具链，这非常棒！
       - name: Cache and Install LoongArch Toolchain
         if: matrix.arch == 'loongarch64'
         uses: actions/cache@v4
         with:
           path: /opt/loongarch-toolchain
           key: ${{ runner.os }}-loongarch-toolchain-v8.0
-      
       - name: Download LoongArch Toolchain if not cached
         if: matrix.arch == 'loongarch64' && steps.cache-loongarch.outputs.cache-hit != 'true'
         run: |
           mkdir -p /opt/loongarch-toolchain
           wget -qO- https://github.com/sunhaiyong1978/CLFS-for-LoongArch/releases/download/8.0/loongarch64-clfs-8.0-cross-tools-gcc-full.tar.xz | tar -xJ -C /opt/loongarch-toolchain
-
       - name: Add LoongArch Toolchain to PATH
         if: matrix.arch == 'loongarch64'
         run: echo "/opt/loongarch-toolchain/cross-tools/bin" >> $GITHUB_PATH
-      
       - name: Set up environment variables
         run: |
           echo "ARCH=${{ matrix.arch }}" >> $GITHUB_ENV
           echo "BOARD=${{ matrix.board }}" >> $GITHUB_ENV
-          
       - name: Build
         run: make
 
@@ -99,7 +88,6 @@ jobs:
     runs-on: ubuntu-22.04
     container:
       image: ghcr.io/jaxtonmax/hvisor-ci:22.04_pro
-      # systemtest 可能需要特殊权限来操作虚拟化设备
       options: --cap-add=SYS_ADMIN --privileged
     strategy:
       fail-fast: false
@@ -110,17 +98,42 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
-        # 关键：确保检出子模块，因为hvisor-tool依赖cJSON
         with:
-          submodules: 'recursive'
+          submodules: 'recursive' # 确保检出所有子模块
 
       - name: Set up environment variables
         run: |
           echo "ARCH=${{ matrix.arch }}" >> $GITHUB_ENV
           echo "BOARD=${{ matrix.board }}" >> $GITHUB_ENV
 
-      # 修复点：删除所有手动的、复杂的构建脚本。
-      # 直接运行 'make stest'，让项目自己的Makefile来处理其依赖项（如hvisor-tool）的构建。
-      # Docker镜像已经提供了所有必要的编译器和库，Makefile现在可以正常工作了。
-      - name: Run System Test
-        run: make stest
+      # 关键修复：在这里隔离并构建 hvisor-tool
+      - name: Build hvisor-tool in an Isolated Environment
+        run: |
+          echo "--- Building hvisor-tool for ${{ matrix.arch }} ---"
+          
+          # 1. 定位到 hvisor-tool 的父目录
+          HVISOR_TOOL_DIR="${{ github.workspace }}/platform/${{ matrix.arch }}/${{ matrix.board }}/image/virtdisk/hvisor-tool"
+          
+          # 2. 确定传递给 hvisor-tool Makefile 的架构参数
+          local MAKE_ARCH=""
+          if [ "${{ matrix.arch }}" == "aarch64" ]; then
+            MAKE_ARCH="arm64"
+          elif [ "${{ matrix.arch }}" == "riscv64" ]; then
+            MAKE_ARCH="riscv"
+          fi
+          
+          # 3. 在隔离的环境中执行构建
+          # 我们不设置 CC 或 CFLAGS，让 hvisor-tool 的 Makefile 自己决定。
+          # 我们只提供它需要的参数：ARCH 和 LIBC。
+          # 这是解决环境污染问题的核心。
+          make -C "${HVISOR_TOOL_DIR}/tools" all ARCH=${MAKE_ARCH} LIBC=gnu
+          
+          echo "--- hvisor-tool build complete ---"
+
+      # 关键修复：告诉主构建脚本跳过它自己的 hvisor-tool 构建步骤
+      - name: Run System Test (skipping tool build)
+        run: |
+          # 设置一个环境变量，让 'make stest' 跳过它内部的 build_hvisor_tool 步骤
+          # 注意：这需要你的顶层 Makefile 或者相关脚本能够识别这个变量
+          export SKIP_HVISOR_TOOL_BUILD=true
+          make stest

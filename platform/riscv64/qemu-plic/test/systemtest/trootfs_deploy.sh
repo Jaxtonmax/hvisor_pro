@@ -78,10 +78,19 @@ deploy_artifacts() {
     mount_rootfs
     prepare_sources
     
-    # Build process
-    if ! build_hvisor_tool; then
-        echo "ERROR: Build failed" >&2
-        exit 1
+    # --- 修改开始 ---
+    # Conditional Build process
+    # 1. 检查环境变量 SKIP_HVISOR_TOOL_BUILD 是否不等于 "true"
+    if [ "$SKIP_HVISOR_TOOL_BUILD" != "true" ]; then
+        # 2. 如果变量不是"true"（或者根本没设置），就执行构建
+        echo "=== SKIP_HVISOR_TOOL_BUILD not set, proceeding with local build. ==="
+        if ! build_hvisor_tool; then
+            echo "ERROR: Build failed" >&2
+            exit 1
+        fi
+    else
+        # 3. 如果变量是"true"，就打印一条信息并跳过构建
+        echo "=== SKIP_HVISOR_TOOL_BUILD is true, skipping local build. ==="
     fi
     
     # Deployment

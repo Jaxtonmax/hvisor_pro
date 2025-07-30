@@ -37,7 +37,7 @@ build_hvisor_tool() {
     cd "${HVISOR_TOOL_DIR}"
 
     # Cross-compilation parameters
-    make all \
+    make -e all \
         ARCH=riscv \
         LOG=LOG_INFO \
         KDIR="${LINUX_KERNEL_DIR}" \

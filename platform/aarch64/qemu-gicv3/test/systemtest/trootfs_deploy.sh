@@ -28,7 +28,8 @@ mount_rootfs() {
 
 prepare_sources() {
     echo "=== Cloning required repositories ==="
-    # 如果目录已存在，假设代码已由CI的checkout步骤准备好，跳过clone
+    # 克隆编译所需的 hvisor-tool 和正确的内核源码
+    # 【修正】内核版本必须与 LINUX_KERNEL_DIR 变量匹配，即 linux_5.4
     if [ ! -d "linux_5.4" ]; then
         git clone https://github.com/CHonghaohao/linux_5.4.git || return 1
     fi
@@ -39,28 +40,25 @@ prepare_sources() {
 
 build_hvisor_tool() {
     echo "=== Building hvisor components ==="
+    # 进入 hvisor-tool 源码目录，这个目录是由 prepare_sources 克隆下来的
     cd "${HVISOR_TOOL_DIR}"
 
     local CFLAGS_EXTRA=""
 
     case "${ARCH}" in
         riscv64)
-            # 设置编译器和 sysroot
             export CC="riscv64-linux-gnu-gcc --sysroot=/usr/riscv64-linux-gnu"
-            # 【重要】仅使用 --sysroot，避免手动添加 -I 指定系统头文件路径，以防破坏编译器的头文件搜索顺序。
             CFLAGS_EXTRA="--sysroot=/usr/riscv64-linux-gnu -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0"
             ;;
         aarch64)
-            # 设置编译器和 sysroot
             export CC="aarch64-linux-gnu-gcc --sysroot=/usr/aarch64-linux-gnu"
-            # 【重要】仅使用 --sysroot，编译器会自动、正确地查找系统头文件，避免 "limits.h" 等编译错误。
-            # 同样地，移除冗余且有害的 -I 标志。
+            # 【修正】只使用 --sysroot 来指定系统根，移除所有手动的 -I 系统路径，以避免头文件冲突
             CFLAGS_EXTRA="--sysroot=/usr/aarch64-linux-gnu -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0"
             ;;
     esac
 
     # 在 make 命令中，将我们构造的 CFLAGS_EXTRA 添加进去
-    # 【重要】ARCH 参数必须与当前构建的架构匹配，使用 ${ARCH} 变量使其动态化。
+    # 【修正】ARCH 参数必须使用 ${ARCH} 变量，以确保传递正确的架构 (aarch64)
     make -e all \
         ARCH=${ARCH} \
         LOG=LOG_INFO \
@@ -73,7 +71,7 @@ deploy_artifacts() {
     echo "=== Deploying build artifacts ==="
     local dest_dir="${ROOTFS_DIR}/home/arm64"
     local test_dest="${dest_dir}/test"
-    # 创建目标目录，确保复制操作不会因目录不存在而失败
+    # 【优化】确保目标目录存在，使脚本更健壮
     sudo mkdir -p "${dest_dir}"
     sudo mkdir -p "${test_dest}/testcase"
     # Copy main components
@@ -94,7 +92,6 @@ deploy_artifacts() {
     # Verify deployment
     echo "=== Deployed files list ==="
     sudo find "${dest_dir}" -ls
-
 }
 
 # ========================
@@ -105,8 +102,9 @@ deploy_artifacts() {
     
     # Setup environment
     mount_rootfs
-    # CI中代码已由 actions/checkout@v4 准备好，通常不需要再 clone
-    # prepare_sources
+    
+    # 【关键】调用 prepare_sources 来克隆正确的依赖源码
+    prepare_sources
     
     # Build process
     if ! build_hvisor_tool; then

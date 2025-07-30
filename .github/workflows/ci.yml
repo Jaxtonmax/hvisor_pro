@@ -133,5 +133,9 @@ jobs:
           echo "ARCH=${{ matrix.arch }}" >> $GITHUB_ENV
           echo "BOARD=${{ matrix.board }}" >> $GITHUB_ENV
       - name: Run System Test
-        # 所有依赖已在镜像中，直接运行测试
-        run: make stest
+        # 为 riscv64 架构添加 CFLAGS 来解决 glibc 头文件编译错误
+        run: |
+          if [ "${{ matrix.arch }}" = "riscv64" ]; then
+            export CFLAGS="-D__GNUC_PREREQ\(a,b\)=1 -D__GLIBC_USE\(a\)=1"
+          fi
+          make stest

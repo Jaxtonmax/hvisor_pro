@@ -42,6 +42,7 @@ build_hvisor_tool() {
         LOG=LOG_INFO \
         KDIR="${LINUX_KERNEL_DIR}" \
         CFLAGS+="-U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0"
+        MAKE='make -e'
 }
 
 deploy_artifacts() {

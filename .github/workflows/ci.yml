@@ -113,24 +113,27 @@ jobs:
           # 1. 定义 hvisor-tool 应该被克隆到的目录
           VIRDISK_DIR="${{ github.workspace }}/platform/${{ matrix.arch }}/${{ matrix.board }}/image/virtdisk"
           
-          # 2. (修复No such file or directory) 克隆 hvisor-tool 仓库
-          echo "Cloning hvisor-tool into ${VIRDISK_DIR}"
+          # 2. (关键修复) 确保目标目录存在，再进入它
+          echo "Ensuring directory exists: ${VIRDISK_DIR}"
+          mkdir -p "${VIRDISK_DIR}"
           cd "${VIRDISK_DIR}"
+          
+          # 3. 克隆 hvisor-tool 仓库
+          echo "Cloning hvisor-tool into the current directory"
           git clone https://github.com/syswonder/hvisor-tool.git
           
-          # 3. 定义 hvisor-tool 内部的 'tools' 目录的完整路径
+          # 4. 定义 hvisor-tool 内部的 'tools' 目录的完整路径
           HVISOR_TOOL_TOOLS_DIR="${VIRDISK_DIR}/hvisor-tool/tools"
 
-          # 4. 确定传递给 Makefile 的架构参数
+          # 5. 确定传递给 Makefile 的架构参数
           MAKE_ARCH=""
-          # (修复unexpected operator) 使用单等号'='以兼容所有POSIX shell
           if [ "${{ matrix.arch }}" = "aarch64" ]; then
             MAKE_ARCH="arm64"
           elif [ "${{ matrix.arch }}" = "riscv64" ]; then
             MAKE_ARCH="riscv"
           fi
           
-          # 5. 在隔离的环境中执行构建，确保在正确的目录中执行
+          # 6. 在隔离的环境中执行构建
           echo "Running make in ${HVISOR_TOOL_TOOLS_DIR}"
           make -C "${HVISOR_TOOL_TOOLS_DIR}" all ARCH=${MAKE_ARCH} LIBC=gnu
           

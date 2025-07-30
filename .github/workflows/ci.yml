@@ -137,26 +137,30 @@ jobs:
 
       - name: Run System Test
         # 解释：
-        # 新的错误 "no include path in which to search for limits.h" 明确地告诉我们，
-        # --sysroot 参数没有被成功传递给编译器。
+        # 根本问题是交叉编译器在编译 cJSON 子模块时，没有找到正确的系统头文件路径，
+        # 导致 #include_next <limits.h> 失败。
+        # 之前的解决方案尝试通过 `export CC=... --sysroot=...` 来修正，但这在复杂的
+        # Makefile 调用链中（特别是依赖生成规则）可能会失效。
         #
         # 最终解决方案：
-        # 我们不再尝试修改 CFLAGS。我们将采取一种更强制的手段：直接修改 CC (C Compiler) 变量。
-        # 我们将 --sysroot 和其他所有必需的参数，直接附加在编译器名称后面。当 make 调用 $(CC) 时，
-        # 它会展开成一个包含了我们所有参数的完整命令。
-        # 这种方法可以穿透所有 Makefile 的阻碍，确保编译器在调用时获得正确的参数。
-        #
-        # 1. 我们为不同的架构定义了正确的交叉编译器名称。
-        # 2. 我们将 --sysroot 和解决 glibc 问题的 -U... -D... 参数直接附加在编译器后面。
-        # 3. 我们将这个完整的命令导出为 CC 环境变量。
-        # 4. 我们继续使用 `make -e` 标志，确保这个 CC 环境变量能够覆盖 Makefile 内部可能存在的任何 CC 定义。
+        # 我们采用一种更明确、更强制的方式。除了设置 CC 和 --sysroot，我们还显式地
+        # 使用 CFLAGS 环境变量，通过 -I 参数直接将正确的头文件搜索路径注入到每一次
+        # 编译器调用中。
+        # 1. `-I/usr/{arch}-linux-gnu/include`: 这是目标架构的 C 库头文件所在位置。
+        # 2. `-I/usr/lib/gcc-cross/{arch}-linux-gnu/11/include-fixed`: 这是 GCC 
+        #    为解决 #include_next 这类问题提供的修正头文件路径。
+        # 3. 我们继续使用 `make -e` 确保这些环境变量能够覆盖 Makefile 内部的定义。
         run: |
           case "${{ matrix.arch }}" in
             riscv64)
-              export CC="riscv64-linux-gnu-gcc --sysroot=/usr/riscv64-linux-gnu -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0"
+              export CC="riscv64-linux-gnu-gcc --sysroot=/usr/riscv64-linux-gnu"
+              export CFLAGS="-I/usr/riscv64-linux-gnu/include -I/usr/lib/gcc-cross/riscv64-linux-gnu/11/include-fixed -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0"
               ;;
             aarch64)
-              export CC="aarch64-linux-gnu-gcc --sysroot=/usr/aarch64-linux-gnu -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0"
+              export CC="aarch64-linux-gnu-gcc --sysroot=/usr/aarch64-linux-gnu"
+              # 注意：这里的 '11' 是基于您 riscv64 环境中的 GCC 版本。如果 aarch64 使用不同版本的 GCC，需要相应调整。
+              # 在 ghcr.io/jaxtonmax/hvisor-ci:22.04_pro 镜像中，版本是相同的。
+              export CFLAGS="-I/usr/aarch64-linux-gnu/include -I/usr/lib/gcc-cross/aarch64-linux-gnu/11/include-fixed -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0"
               ;;
           esac
           

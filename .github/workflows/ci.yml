@@ -13,6 +13,10 @@ jobs:
     runs-on: ubuntu-22.04
     container: ghcr.io/jaxtonmax/hvisor-ci:22.04_pro
     steps:
+      - name: Reset Rustup to Official Servers
+        run: |
+          echo "RUSTUP_DIST_SERVER=https://static.rust-lang.org" >> $GITHUB_ENV
+          echo "RUSTUP_UPDATE_ROOT=https://static.rust-lang.org/rustup" >> $GITHUB_ENV
       - name: Checkout Repository
         uses: actions/checkout@v4
       - name: Format Check
@@ -35,6 +39,10 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+      - name: Reset Rustup to Official Servers
+        run: |
+          echo "RUSTUP_DIST_SERVER=https://static.rust-lang.org" >> $GITHUB_ENV
+          echo "RUSTUP_UPDATE_ROOT=https://static.rust-lang.org/rustup" >> $GITHUB_ENV
       - name: Set up environment variables
         run: |
           echo "ARCH=${{ matrix.arch }}" >> $GITHUB_ENV
@@ -65,6 +73,11 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+
+      - name: Reset Rustup to Official Servers
+        run: |
+          echo "RUSTUP_DIST_SERVER=https://static.rust-lang.org" >> $GITHUB_ENV
+          echo "RUSTUP_UPDATE_ROOT=https://static.rust-lang.org/rustup" >> $GITHUB_ENV
 
       # --- 关键优化：为 LoongArch 动态加载工具链 ---
       - name: Cache and Install LoongArch Toolchain
@@ -111,6 +124,10 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: 'true'
+      - name: Reset Rustup to Official Servers
+        run: |
+          echo "RUSTUP_DIST_SERVER=https://static.rust-lang.org" >> $GITHUB_ENV
+          echo "RUSTUP_UPDATE_ROOT=https://static.rust-lang.org/rustup" >> $GITHUB_ENV
       - name: Set up environment variables
         run: |
           echo "ARCH=${{ matrix.arch }}" >> $GITHUB_ENV

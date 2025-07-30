@@ -137,14 +137,19 @@ jobs:
 
       - name: Run System Test
         # 解释：
-        # 对交叉编译任务，通过 CFLAGS="--sysroot=/path/to/sysroot" 的方式，
-        # 强制编译器使用对应架构的正确系统根（sysroot），而不是主机的头文件。
-        # 这从根本上解决了因引用错误头文件而导致的 glibc 宏未定义编译错误。
+        # 使用 case 语句来替代 if/elif 结构，这种语法更健壮，可以避免潜在的 shell 解析错误。
+        # 1. 根据 matrix.arch 的值，将对应的 --sysroot 标志设置到一个变量 CFLAGS_EXTRA 中。
+        # 2. 在脚本最后，将这个变量作为 CFLAGS 的一部分传递给 make 命令。
+        # 这种方式分离了逻辑判断和命令执行，代码更清晰，不易出错。
         run: |
-          if [ "${{ matrix.arch }}" = "riscv64" ]; then
-            make stest CFLAGS="--sysroot=/usr/riscv64-linux-gnu"
-          elif [ "${{ matrix.arch }}" = "aarch64" ]; then
-            make stest CFLAGS="--sysroot=/usr/aarch64-linux-gnu"
-          else
-            make stest
-          fi```
+          CFLAGS_EXTRA=""
+          case "${{ matrix.arch }}" in
+            riscv64)
+              CFLAGS_EXTRA="--sysroot=/usr/riscv64-linux-gnu"
+              ;;
+            aarch64)
+              CFLAGS_EXTRA="--sysroot=/usr/aarch64-linux-gnu"
+              ;;
+          esac
+          
+          make stest CFLAGS="${CFLAGS_EXTRA}"

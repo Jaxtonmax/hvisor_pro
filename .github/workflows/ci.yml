@@ -137,15 +137,39 @@ jobs:
 
       - name: Run System Test
         run: |
+          # 设置架构特定的编译环境
           case "${{ matrix.arch }}" in
             riscv64)
-              export CC="riscv64-linux-gnu-gcc --sysroot=/usr/riscv64-linux-gnu"
-              export CFLAGS="-I/usr/riscv64-linux-gnu/include -I/usr/lib/gcc-cross/riscv64-linux-gnu/11/include-fixed -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0"
+              export SYSROOT_PATH="/usr/riscv64-linux-gnu"
+              export CROSS_PREFIX="riscv64-linux-gnu-"
               ;;
             aarch64)
-              export CC="aarch64-linux-gnu-gcc --sysroot=/usr/aarch64-linux-gnu"
-              export CFLAGS="-I/usr/aarch64-linux-gnu/include -I/usr/lib/gcc-cross/aarch64-linux-gnu/11/include-fixed -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0"
+              export SYSROOT_PATH="/usr/aarch64-linux-gnu"
+              export CROSS_PREFIX="aarch64-linux-gnu-"
               ;;
           esac
+
+          # 强制设置所有必要的编译变量
+          export CC="${CROSS_PREFIX}gcc"
+          export CXX="${CROSS_PREFIX}g++"
+          export AR="${CROSS_PREFIX}ar"
+          export LD="${CROSS_PREFIX}ld"
           
+          # 关键修复：同时设置 CFLAGS 和 CPPFLAGS
+          export CFLAGS="--sysroot=${SYSROOT_PATH} -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0"
+          export CPPFLAGS="-I${SYSROOT_PATH}/include"
+          export LDFLAGS="-L${SYSROOT_PATH}/lib -Wl,-rpath-link,${SYSROOT_PATH}/lib"
+          
+          # 递归传递变量给所有子make
+          export MAKE="make -e"
+          
+          # 显示环境变量用于调试
+          echo "=== Build Environment ==="
+          echo "CC=$CC"
+          echo "CFLAGS=$CFLAGS"
+          echo "CPPFLAGS=$CPPFLAGS"
+          echo "LDFLAGS=$LDFLAGS"
+          echo "MAKE=$MAKE"
+          
+          # 执行构建
           make -e stest

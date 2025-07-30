@@ -40,29 +40,31 @@ build_hvisor_tool() {
     echo "=== Building hvisor components ==="
     cd "${HVISOR_TOOL_DIR}"
 
-    local CFLAGS_EXTRA=""
     local MAKE_ARCH=""
 
     case "${ARCH}" in
         riscv64)
-            export CC="riscv64-linux-gnu-gcc --sysroot=/usr/riscv64-linux-gnu"
-            CFLAGS_EXTRA="--sysroot=/usr/riscv64-linux-gnu -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0"
+            # 【终极修正】将所有编译标志直接注入 CC 变量。
+            # 我们将 --sysroot 和其他必要的标志与编译器本身绑定在一起。
+            export CC='riscv64-linux-gnu-gcc --sysroot=/usr/riscv64-linux-gnu -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0'
+            # 将 CI 的标准架构名 'riscv64' 翻译为 Makefile 期望的 'riscv'
             MAKE_ARCH="riscv"
             ;;
         aarch64)
-            export CC="aarch64-linux-gnu-gcc --sysroot=/usr/aarch64-linux-gnu"
-            CFLAGS_EXTRA="--sysroot=/usr/aarch64-linux-gnu -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0"
+            # 【终极修正】对 aarch64 也采用同样策略。
+            export CC='aarch64-linux-gnu-gcc --sysroot=/usr/aarch64-linux-gnu -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0'
+            # 将 CI 的标准架构名 'aarch64' 翻译为 Makefile 期望的 'arm64'
             MAKE_ARCH="arm64"
             ;;
     esac
 
-    # 【关键修正】使用 CFLAGS=... 来彻底覆盖 Makefile 内部定义的 CFLAGS，
-    # 而不是使用 CFLAGS+=... 进行追加。这是解决 limits.h 错误的根本方法。
+    # 【终极修正】调用 make 时，将 CFLAGS 强制设置为空，防止 Makefile 内部的任何污染。
+    # 所有的编译环境控制现在都由我们上面定义的 CC 变量全权负责。
     make -e all \
         ARCH=${MAKE_ARCH} \
         LOG=LOG_INFO \
         KDIR="${LINUX_KERNEL_DIR}" \
-        "CFLAGS=${CFLAGS_EXTRA}" \
+        CFLAGS="" \
         MAKE='make -e'
 }
 

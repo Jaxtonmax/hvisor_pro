@@ -3,7 +3,7 @@ set -e
 set -x            # Print commands for debugging
 
 # ========================
-# Environment Configuration
+# Environment Configuration (aarch64 specific)
 # ========================
 WORKSPACE_ROOT="${GITHUB_WORKSPACE:-$(pwd)}"
 ROOTFS_DIR="${WORKSPACE_ROOT}/platform/aarch64/qemu-gicv3/image/virtdisk/rootfs"
@@ -28,6 +28,7 @@ mount_rootfs() {
 
 prepare_sources() {
     echo "=== Cloning required repositories ==="
+    # 克隆 aarch64 需要的正确内核版本
     if [ ! -d "linux_5.4" ]; then
         git clone https://github.com/CHonghaohao/linux_5.4.git || return 1
     fi
@@ -40,34 +41,34 @@ build_hvisor_tool() {
     echo "=== Building hvisor components ==="
     cd "${HVISOR_TOOL_DIR}"
 
-    local CFLAGS_EXTRA=""
     local MAKE_ARCH=""
 
     case "${ARCH}" in
         riscv64)
-            export CC="riscv64-linux-gnu-gcc --sysroot=/usr/riscv64-linux-gnu"
-            CFLAGS_EXTRA="--sysroot=/usr/riscv64-linux-gnu -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0"
+            # riscv64 的配置
+            export CC='riscv64-linux-gnu-gcc --sysroot=/usr/riscv64-linux-gnu -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0'
             MAKE_ARCH="riscv"
             ;;
         aarch64)
-            export CC="aarch64-linux-gnu-gcc --sysroot=/usr/aarch64-linux-gnu"
-            CFLAGS_EXTRA="--sysroot=/usr/aarch64-linux-gnu -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0"
+            # 【终极修正】将所有编译标志直接注入 CC 变量。
+            export CC='aarch64-linux-gnu-gcc --sysroot=/usr/aarch64-linux-gnu -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0'
+            # 将 CI 的标准架构名 'aarch64' 翻译为 Makefile 期望的 'arm64'
             MAKE_ARCH="arm64"
             ;;
     esac
 
-    # 【关键修正】使用 CFLAGS=... 来彻底覆盖 Makefile 内部定义的 CFLAGS，
-    # 而不是使用 CFLAGS+=... 进行追加。这是解决 limits.h 错误的根本方法。
+    # 【终极修正】调用 make 时，将 CFLAGS 强制设置为空，防止 Makefile 内部的任何污染。
+    # 所有的编译环境控制现在都由我们上面定义的 CC 变量全权负责。
     make -e all \
         ARCH=${MAKE_ARCH} \
         LOG=LOG_INFO \
         KDIR="${LINUX_KERNEL_DIR}" \
-        "CFLAGS=${CFLAGS_EXTRA}" \
+        CFLAGS="" \
         MAKE='make -e'
 }
 
 deploy_artifacts() {
-    # ... 此函数内容无需修改 ...
+    # ... 此函数内容无需修改，它使用 aarch64 特定的路径 ...
     echo "=== Deploying build artifacts ==="
     local dest_dir="${ROOTFS_DIR}/home/arm64"
     local test_dest="${dest_dir}/test"
@@ -88,7 +89,7 @@ deploy_artifacts() {
 }
 
 # ========================
-# Main Execution Flow
+# Main Execution Flow (aarch64 specific)
 # ========================
 (
     cd "${WORKSPACE_ROOT}/platform/aarch64/qemu-gicv3/image/virtdisk"
